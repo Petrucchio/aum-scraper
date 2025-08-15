@@ -1,0 +1,96 @@
+# Makefile para AUM Scraper Backend
+
+.PHONY: help build up down logs test clean migrate init
+
+# Variáveis
+DOCKER_COMPOSE = docker-compose
+BACKEND_SERVICE = backend
+
+help: ## Mostra esta ajuda
+	@echo "Comandos disponíveis:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+build: ## Constrói as imagens Docker
+	$(DOCKER_COMPOSE) build
+
+up: ## Inicia todos os serviços
+	$(DOCKER_COMPOSE) up -d
+
+up-build: ## Constrói e inicia todos os serviços
+	$(DOCKER_COMPOSE) up -d --build
+
+down: ## Para todos os serviços
+	$(DOCKER_COMPOSE) down
+
+down-volumes: ## Para todos os serviços e remove volumes
+	$(DOCKER_COMPOSE) down -v
+
+logs: ## Mostra logs do backend
+	$(DOCKER_COMPOSE) logs -f $(BACKEND_SERVICE)
+
+logs-all: ## Mostra logs de todos os serviços
+	$(DOCKER_COMPOSE) logs -f
+
+test: ## Executa testes
+	$(DOCKER_COMPOSE) exec $(BACKEND_SERVICE) pytest tests/ -v
+
+test-cov: ## Executa testes com cobertura
+	$(DOCKER_COMPOSE) exec $(BACKEND_SERVICE) pytest tests/ -v --cov=app --cov-report=html
+
+migrate: ## Executa migrações do banco
+	$(DOCKER_COMPOSE) exec $(BACKEND_SERVICE) alembic upgrade head
+
+migrate-create: ## Cria nova migração
+	$(DOCKER_COMPOSE) exec $(BACKEND_SERVICE) alembic revision --autogenerate -m "$(msg)"
+
+shell: ## Acessa shell do backend
+	$(DOCKER_COMPOSE) exec $(BACKEND_SERVICE) /bin/bash
+
+db-shell: ## Acessa shell do PostgreSQL
+	$(DOCKER_COMPOSE) exec db psql -U scraper -d scraperdb
+
+init: ## Inicializa projeto (build + up + migrate)
+	make build
+	make up
+	sleep 10
+	make migrate
+
+clean: ## Remove containers e volumes
+	$(DOCKER_COMPOSE) down -v --rmi all
+
+status: ## Mostra status dos serviços
+	$(DOCKER_COMPOSE) ps
+
+restart: ## Reinicia todos os serviços
+	$(DOCKER_COMPOSE) restart
+
+restart-backend: ## Reinicia apenas o backend
+	$(DOCKER_COMPOSE) restart $(BACKEND_SERVICE)
+
+# Comandos para desenvolvimento
+dev-setup: ## Setup completo para desenvolvimento
+	@echo "🚀 Configurando ambiente de desenvolvimento..."
+	cp .env.example .env
+	make init
+	@echo "✅ Ambiente pronto! Acesse http://localhost:8000/docs"
+
+load-csv: ## Carrega empresas do CSV
+	curl -X POST "http://localhost:8000/api/v1/companies/load-from-csv"
+
+run-pipeline: ## Executa pipeline completo
+	curl -X POST "http://localhost:8000/api/v1/scraping/pipeline/full"
+
+check-usage: ## Verifica uso atual da API
+	curl "http://localhost:8000/api/v1/usage/today"
+
+export-excel: ## Baixa relatório Excel
+	curl -o resultados.xlsx "http://localhost:8000/api/v1/scraping/export/excel"
+
+# Comandos de monitoramento
+health: ## Verifica saúde dos serviços
+	@echo "🏥 Verificando saúde dos serviços..."
+	@curl -s http://localhost:8000/health | python -m json.tool || echo "❌ Backend indisponível"
+	@curl -s http://localhost:15672/api/overview -u guest:guest > /dev/null && echo "✅ RabbitMQ OK" || echo "❌ RabbitMQ indisponível"
+
+stats: ## Mostra estatísticas das empresas
+	curl -s "http://localhost:8000/api/v1/companies/stats/summary" | python -m json.tool
