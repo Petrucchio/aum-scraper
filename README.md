@@ -33,7 +33,7 @@ Sistema backend para coleta automatizada de Patrimônio Sob Gestão (AUM) de emp
 
 ### 1. Clone o repositório
 ```bash
-git clone <https://github.com/Petrucchio/aum-scraper.git>
+git clone https://github.com/Petrucchio/aum-scraper.git
 cd aum-scraper-backend
 ```
 
